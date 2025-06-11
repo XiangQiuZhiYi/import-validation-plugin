@@ -1,0 +1,49 @@
+{
+  "name": "import-validation-plugin",
+  "version": "0.0.3",
+  "description": "A plugin for validating imports in Vite and Webpack projects",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "require": "./dist/index.cjs",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "keywords": [
+    "vite",
+    "webpack",
+    "plugin",
+    "import",
+    "validation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.27.5",
+    "@babel/traverse": "^7.27.4",
+    "@babel/types": "^7.27.6",
+    "@vue/compiler-sfc": "^3.5.16",
+    "chalk": "^5.4.1",
+    "@babel/preset-typescript": "^7.27.1"
+  },
+  "peerDependencies": {
+    "vite": "^6.3.5",
+    "webpack": "^5.89.0",
+    "@babel/core": "^7.27.5"
+  },
+  "scripts": {
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.2"
+  }
+}
