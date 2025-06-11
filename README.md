@@ -46,7 +46,7 @@ new importValidationForWebpack({
 ## 配置选项
 
 | 参数 | 类型 | 说明 | 默认值 |
-| --- | --- |
+| --- | --- | -| -|
 | specify | string[] | 指定要检查的引入目录 | [] |
 | exclude | RegExp | 要忽略的路径 | /node_modules/ |
 
