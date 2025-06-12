@@ -1,4 +1,4 @@
-import chalk from "chalk";
+// import chalk from "chalk";
 import path from "path";
 import fs from "fs";
 import { parse } from "@babel/parser";
@@ -254,11 +254,9 @@ export function importValidationForVite(options) {
         hasApiImport(id, code, API_PATH_PATTERN);
         if (errorList.size > 0) {
           Array.from(errorList).forEach((error) => {
-            console.error(chalk.bgRed.white.bold("\n 发现导入验证错误 \n"));
-            console.error(chalk.red(error));
-            console.error(chalk.gray("─".repeat(process.stdout.columns || 50)));
+            console.error("\n 发现导入验证错误 \n");
+            console.error(error);
           });
-          console.error(chalk.bgRed.white.bold("\n 请修复以上错误后重试 \n"));
           process.exit();
         }
       }
@@ -284,9 +282,9 @@ export class importValidationForWebpack {
     compiler.hooks.compilation.tap(
       "WebpackImportValidationPlugin",
       (compilation) => {
-        compilation.hooks.succeedModule.tap(
+        compilation.hooks.normalModuleLoader.tap(
           "WebpackImportValidationPlugin",
-          (module) => {
+          (loaderContext, module) => {
             if (
               this.options.exclude &&
               this.options.exclude.test(module.resource)
@@ -308,15 +306,12 @@ export class importValidationForWebpack {
               if (errorList.size > 0) {
                 Array.from(errorList).forEach((error) => {
                   console.error(
-                    chalk.bgRed.white.bold("\n 发现导入验证错误 \n")
+                    "\n 发现导入验证错误 \n"
                   );
-                  console.error(chalk.red(error));
-                  console.error(
-                    chalk.gray("─".repeat(process.stdout.columns || 50))
-                  );
+                  console.error(error);
                 });
                 console.error(
-                  chalk.bgRed.white.bold("\n 请修复以上错误后重试 \n")
+                  "\n 请修复以上错误后重试 \n"
                 );
                 process.exit();
               }

@@ -33,7 +33,6 @@ __export(src_exports, {
   importValidationForWebpack: () => importValidationForWebpack
 });
 module.exports = __toCommonJS(src_exports);
-var import_chalk = __toESM(require("chalk"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_fs = __toESM(require("fs"), 1);
 var import_parser = require("@babel/parser");
@@ -233,11 +232,9 @@ function importValidationForVite(options) {
         hasApiImport(id, code, API_PATH_PATTERN);
         if (errorList.size > 0) {
           Array.from(errorList).forEach((error) => {
-            console.error(import_chalk.default.bgRed.white.bold("\n \u53D1\u73B0\u5BFC\u5165\u9A8C\u8BC1\u9519\u8BEF \n"));
-            console.error(import_chalk.default.red(error));
-            console.error(import_chalk.default.gray("\u2500".repeat(process.stdout.columns || 50)));
+            console.error("\n \u53D1\u73B0\u5BFC\u5165\u9A8C\u8BC1\u9519\u8BEF \n");
+            console.error(error);
           });
-          console.error(import_chalk.default.bgRed.white.bold("\n \u8BF7\u4FEE\u590D\u4EE5\u4E0A\u9519\u8BEF\u540E\u91CD\u8BD5 \n"));
           process.exit();
         }
       }
@@ -260,13 +257,15 @@ var importValidationForWebpack = class {
     compiler.hooks.compilation.tap(
       "WebpackImportValidationPlugin",
       (compilation) => {
-        compilation.hooks.succeedModule.tap(
+        compilation.hooks.normalModuleLoader.tap(
           "WebpackImportValidationPlugin",
-          (module2) => {
+          (loaderContext, module2) => {
             if (this.options.exclude && this.options.exclude.test(module2.resource)) {
               return;
             }
+            console.log(111);
             const ext = import_path.default.extname(module2.resource);
+            console.log(222);
             if ([".js", ".jsx", ".ts", ".mjs", ".cjs", ".vue"].includes(ext)) {
               const API_PATH_PATTERN = new RegExp(
                 `^@/(${this.options.specify.join(
@@ -281,15 +280,12 @@ var importValidationForWebpack = class {
               if (errorList.size > 0) {
                 Array.from(errorList).forEach((error) => {
                   console.error(
-                    import_chalk.default.bgRed.white.bold("\n \u53D1\u73B0\u5BFC\u5165\u9A8C\u8BC1\u9519\u8BEF \n")
+                    "\n \u53D1\u73B0\u5BFC\u5165\u9A8C\u8BC1\u9519\u8BEF \n"
                   );
-                  console.error(import_chalk.default.red(error));
-                  console.error(
-                    import_chalk.default.gray("\u2500".repeat(process.stdout.columns || 50))
-                  );
+                  console.error(error);
                 });
                 console.error(
-                  import_chalk.default.bgRed.white.bold("\n \u8BF7\u4FEE\u590D\u4EE5\u4E0A\u9519\u8BEF\u540E\u91CD\u8BD5 \n")
+                  "\n \u8BF7\u4FEE\u590D\u4EE5\u4E0A\u9519\u8BEF\u540E\u91CD\u8BD5 \n"
                 );
                 process.exit();
               }
