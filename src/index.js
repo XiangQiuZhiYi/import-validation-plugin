@@ -282,9 +282,9 @@ export class importValidationForWebpack {
     compiler.hooks.compilation.tap(
       "WebpackImportValidationPlugin",
       (compilation) => {
-        compilation.hooks.normalModuleLoader.tap(
+        compilation.hooks.succeedModule.tap(
           "WebpackImportValidationPlugin",
-          (loaderContext, module) => {
+          (module) => {
             if (
               this.options.exclude &&
               this.options.exclude.test(module.resource)
@@ -305,14 +305,10 @@ export class importValidationForWebpack {
 
               if (errorList.size > 0) {
                 Array.from(errorList).forEach((error) => {
-                  console.error(
-                    "\n 发现导入验证错误 \n"
-                  );
+                  console.error("\n 发现导入验证错误 \n")
                   console.error(error);
                 });
-                console.error(
-                  "\n 请修复以上错误后重试 \n"
-                );
+                console.error("\n 请修复以上错误后重试 \n")
                 process.exit();
               }
             }

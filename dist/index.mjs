@@ -223,15 +223,13 @@ var importValidationForWebpack = class {
     compiler.hooks.compilation.tap(
       "WebpackImportValidationPlugin",
       (compilation) => {
-        compilation.hooks.normalModuleLoader.tap(
+        compilation.hooks.succeedModule.tap(
           "WebpackImportValidationPlugin",
-          (loaderContext, module) => {
+          (module) => {
             if (this.options.exclude && this.options.exclude.test(module.resource)) {
               return;
             }
-            console.log(111);
             const ext = path.extname(module.resource);
-            console.log(222);
             if ([".js", ".jsx", ".ts", ".mjs", ".cjs", ".vue"].includes(ext)) {
               const API_PATH_PATTERN = new RegExp(
                 `^@/(${this.options.specify.join(
@@ -245,14 +243,10 @@ var importValidationForWebpack = class {
               hasApiImport(module.resource, code, API_PATH_PATTERN);
               if (errorList.size > 0) {
                 Array.from(errorList).forEach((error) => {
-                  console.error(
-                    "\n \u53D1\u73B0\u5BFC\u5165\u9A8C\u8BC1\u9519\u8BEF \n"
-                  );
+                  console.error("\n \u53D1\u73B0\u5BFC\u5165\u9A8C\u8BC1\u9519\u8BEF \n");
                   console.error(error);
                 });
-                console.error(
-                  "\n \u8BF7\u4FEE\u590D\u4EE5\u4E0A\u9519\u8BEF\u540E\u91CD\u8BD5 \n"
-                );
+                console.error("\n \u8BF7\u4FEE\u590D\u4EE5\u4E0A\u9519\u8BEF\u540E\u91CD\u8BD5 \n");
                 process.exit();
               }
             }
