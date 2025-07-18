@@ -11,7 +11,7 @@ const errorList = new Set();
 let aliases = null;
 
 // 获取文件中导出的方法名
-function getExportedMethods(code, fullPath, importPath) {
+function getExportedMethods(code, fullPath) {
   if (exportedAllList.has(fullPath)) {
     return;
   }
@@ -99,7 +99,6 @@ function getExportedMethods(code, fullPath, importPath) {
  * @returns {string} 绝对路径
  */
 function resolveImportPath(importPath, sourceFile) {
-  const extensions = [".js", ".ts", ".tsx", ".jsx", "/index.js", "/index.ts"];
   let basePath = "";
   // 1. 如果已经是绝对路径，直接返回
   if (path.isAbsolute(importPath)) {
@@ -117,17 +116,7 @@ function resolveImportPath(importPath, sourceFile) {
       }
     }
   }
-  if (fs.existsSync(basePath)) {
-    return basePath;
-  }
-  // 4. 尝试补全扩展名
-  for (const ext of extensions) {
-    const fullPath = basePath + ext;
-    if (fs.existsSync(fullPath)) {
-      return fullPath;
-    }
-  }
-  return "";
+  return basePath;
 }
 
 // 检查引用文件的语法树是否包含在对应的文件中
@@ -210,9 +199,31 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
     // 静态导入: import ... from 'xxx'
     ImportDeclaration(path) {
       const importPath = path.node.source.value;
-      if (API_PATH_PATTERN.test(importPath)) {
-        const resolvedPath = resolveImportPath(importPath, filePath);
-        if (resolvedPath === "") {
+      let resolvedPath = ''
+      const basePath = resolveImportPath(importPath, filePath);
+      if (API_PATH_PATTERN.test(basePath)) {
+        const extensions = [
+          ".js",
+          ".ts",
+          ".tsx",
+          ".jsx",
+          "/index.js",
+          "/index.ts",
+        ];
+
+        if (fs.existsSync(basePath)) {
+          resolvedPath = basePath
+        }
+        // 4. 尝试补全扩展名
+        for (const ext of extensions) {
+          const fullPath = basePath + ext;
+          if (fs.existsSync(fullPath)) {
+          resolvedPath = fullPath
+
+          }
+        }
+
+        if (resolvedPath === '') {
           if (path.node.loc) {
             const { line, column } = path.node.loc.start;
             errorList.add(
@@ -223,7 +234,7 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
           }
         } else {
           const code = fs.readFileSync(resolvedPath, "utf-8");
-          getExportedMethods(code, resolvedPath, importPath);
+          getExportedMethods(code, resolvedPath);
 
           checkImport(path.node, resolvedPath, filePath);
         }
@@ -242,15 +253,17 @@ export function importValidationForVite(options) {
     },
 
     async transform(code, id) {
+
       // 跳过排除的文件
       if (options.exclude && options.exclude.test(id)) {
         return null;
       }
       const ext = path.extname(id);
-      if ([".js", ".jsx", ".ts", ".mjs", ".cjs", ".vue"].includes(ext)) {
-        const API_PATH_PATTERN = new RegExp(
-          `^@/(${options.specify.join("|")})/|/(${options.specify.join("|")})/`
-        );
+      if ([".js", ".jsx", ".ts",".tsx", ".mjs", ".cjs", ".vue"].includes(ext)) {
+        const newSpecify = options.specify.map((item) => {
+          return path.join(process.cwd(), item);
+        });
+        const API_PATH_PATTERN = new RegExp(`^(${newSpecify.join("|")})/`);
         hasApiImport(id, code, API_PATH_PATTERN);
         if (errorList.size > 0) {
           Array.from(errorList).forEach((error) => {
@@ -277,7 +290,7 @@ export class importValidationForWebpack {
 
   apply(compiler) {
     const webpackConfig = compiler.options;
-    aliases = webpackConfig.resolve.alias || {};
+    aliases = webpackConfig?.resolve?.alias || {};
 
     compiler.hooks.compilation.tap(
       "WebpackImportValidationPlugin",
@@ -292,12 +305,14 @@ export class importValidationForWebpack {
               return;
             }
             const ext = path.extname(module.resource);
-            if ([".js", ".jsx", ".ts", ".mjs", ".cjs", ".vue"].includes(ext)) {
+            if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue"].includes(ext)) {
+              const newSpecify = this.options.specify.map((item) => {
+                return path.join(process.cwd(), item);
+              });
               const API_PATH_PATTERN = new RegExp(
-                `^@/(${this.options.specify.join(
-                  "|"
-                )})/|/(${this.options.specify.join("|")})/`
+                `^(${newSpecify.join("|")})/`
               );
+
               const source = module.originalSource();
               if (!source) return;
               const code = source.source().toString();
@@ -305,10 +320,10 @@ export class importValidationForWebpack {
 
               if (errorList.size > 0) {
                 Array.from(errorList).forEach((error) => {
-                  console.error("\n 发现导入验证错误 \n")
+                  console.error("\n 发现导入验证错误 \n");
                   console.error(error);
                 });
-                console.error("\n 请修复以上错误后重试 \n")
+                console.error("\n 请修复以上错误后重试 \n");
                 process.exit();
               }
             }

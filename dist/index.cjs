@@ -42,7 +42,7 @@ var import_compiler_sfc = require("@vue/compiler-sfc");
 var exportedAllList = /* @__PURE__ */ new Map();
 var errorList = /* @__PURE__ */ new Set();
 var aliases = null;
-function getExportedMethods(code, fullPath, importPath) {
+function getExportedMethods(code, fullPath) {
   if (exportedAllList.has(fullPath)) {
     return;
   }
@@ -102,7 +102,6 @@ function getExportedMethods(code, fullPath, importPath) {
   exportedAllList.set(fullPath, [...exportedMethods]);
 }
 function resolveImportPath(importPath, sourceFile) {
-  const extensions = [".js", ".ts", ".tsx", ".jsx", "/index.js", "/index.ts"];
   let basePath = "";
   if (import_path.default.isAbsolute(importPath)) {
     basePath = importPath;
@@ -119,16 +118,7 @@ function resolveImportPath(importPath, sourceFile) {
       }
     }
   }
-  if (import_fs.default.existsSync(basePath)) {
-    return basePath;
-  }
-  for (const ext of extensions) {
-    const fullPath = basePath + ext;
-    if (import_fs.default.existsSync(fullPath)) {
-      return fullPath;
-    }
-  }
-  return "";
+  return basePath;
 }
 function checkImport(path2, fullPath, filePath) {
   path2.specifiers.forEach((spec) => {
@@ -193,8 +183,26 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
     // 静态导入: import ... from 'xxx'
     ImportDeclaration(path2) {
       const importPath = path2.node.source.value;
-      if (API_PATH_PATTERN.test(importPath)) {
-        const resolvedPath = resolveImportPath(importPath, filePath);
+      let resolvedPath = "";
+      const basePath = resolveImportPath(importPath, filePath);
+      if (API_PATH_PATTERN.test(basePath)) {
+        const extensions = [
+          ".js",
+          ".ts",
+          ".tsx",
+          ".jsx",
+          "/index.js",
+          "/index.ts"
+        ];
+        if (import_fs.default.existsSync(basePath)) {
+          resolvedPath = basePath;
+        }
+        for (const ext2 of extensions) {
+          const fullPath = basePath + ext2;
+          if (import_fs.default.existsSync(fullPath)) {
+            resolvedPath = fullPath;
+          }
+        }
         if (resolvedPath === "") {
           if (path2.node.loc) {
             const { line, column } = path2.node.loc.start;
@@ -206,7 +214,7 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
           }
         } else {
           const code2 = import_fs.default.readFileSync(resolvedPath, "utf-8");
-          getExportedMethods(code2, resolvedPath, importPath);
+          getExportedMethods(code2, resolvedPath);
           checkImport(path2.node, resolvedPath, filePath);
         }
       }
@@ -225,10 +233,11 @@ function importValidationForVite(options) {
         return null;
       }
       const ext = import_path.default.extname(id);
-      if ([".js", ".jsx", ".ts", ".mjs", ".cjs", ".vue"].includes(ext)) {
-        const API_PATH_PATTERN = new RegExp(
-          `^@/(${options.specify.join("|")})/|/(${options.specify.join("|")})/`
-        );
+      if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue"].includes(ext)) {
+        const newSpecify = options.specify.map((item) => {
+          return import_path.default.join(process.cwd(), item);
+        });
+        const API_PATH_PATTERN = new RegExp(`^(${newSpecify.join("|")})/`);
         hasApiImport(id, code, API_PATH_PATTERN);
         if (errorList.size > 0) {
           Array.from(errorList).forEach((error) => {
@@ -253,7 +262,7 @@ var importValidationForWebpack = class {
   }
   apply(compiler) {
     const webpackConfig = compiler.options;
-    aliases = webpackConfig.resolve.alias || {};
+    aliases = webpackConfig?.resolve?.alias || {};
     compiler.hooks.compilation.tap(
       "WebpackImportValidationPlugin",
       (compilation) => {
@@ -264,11 +273,12 @@ var importValidationForWebpack = class {
               return;
             }
             const ext = import_path.default.extname(module2.resource);
-            if ([".js", ".jsx", ".ts", ".mjs", ".cjs", ".vue"].includes(ext)) {
+            if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue"].includes(ext)) {
+              const newSpecify = this.options.specify.map((item) => {
+                return import_path.default.join(process.cwd(), item);
+              });
               const API_PATH_PATTERN = new RegExp(
-                `^@/(${this.options.specify.join(
-                  "|"
-                )})/|/(${this.options.specify.join("|")})/`
+                `^(${newSpecify.join("|")})/`
               );
               const source = module2.originalSource();
               if (!source)
