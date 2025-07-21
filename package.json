@@ -1,6 +1,6 @@
 {
   "name": "import-validation-plugin",
-  "version": "0.0.7",
+  "version": "1.0.0",
   "description": "A plugin for validating imports in Vite and Webpack projects",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -11,6 +11,7 @@
       "import": "./dist/index.mjs"
     }
   },
+  "homepage": "https://github.com/XiangQiuZhiYi/import-validation-plugin",
   "keywords": [
     "vite",
     "webpack",
