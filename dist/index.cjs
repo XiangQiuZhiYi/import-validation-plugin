@@ -35,71 +35,121 @@ __export(src_exports, {
 module.exports = __toCommonJS(src_exports);
 var import_path = __toESM(require("path"), 1);
 var import_fs = __toESM(require("fs"), 1);
+var import_parser2 = require("@babel/parser");
+var import_traverse3 = __toESM(require("@babel/traverse"), 1);
+var t3 = __toESM(require("@babel/types"), 1);
+var import_compiler_sfc = require("@vue/compiler-sfc");
+
+// src/getExport.js
 var import_parser = require("@babel/parser");
 var import_traverse = __toESM(require("@babel/traverse"), 1);
 var t = __toESM(require("@babel/types"), 1);
-var import_compiler_sfc = require("@vue/compiler-sfc");
-var exportedAllList = /* @__PURE__ */ new Map();
-var errorList = /* @__PURE__ */ new Set();
-var aliases = null;
-function getExportedMethods(code, fullPath) {
-  if (exportedAllList.has(fullPath)) {
-    return;
-  }
-  const ast = (0, import_parser.parse)(code, {
+function getExport(originalCode) {
+  const ast = (0, import_parser.parse)(originalCode, {
     sourceType: "module",
-    plugins: ["jsx", "typescript"],
-    allowUndeclaredExports: true
+    plugins: ["jsx", "typescript"]
   });
-  const exportedMethods = /* @__PURE__ */ new Set();
+  const exportsObject = {};
   import_traverse.default.default(ast, {
-    noScope: true,
-    // CommonJS exports
-    AssignmentExpression(path2) {
-      if (t.isMemberExpression(path2.node.left) && t.isIdentifier(path2.node.left.object, { name: "module" }) && t.isIdentifier(path2.node.left.property, { name: "exports" }) && t.isObjectExpression(path2.node.right)) {
-        path2.node.right.properties.forEach((prop) => {
-          if (t.isObjectProperty(prop) && t.isIdentifier(prop.key)) {
-            exportedMethods.add(prop.key.name);
-          }
-        });
-      } else if (t.isMemberExpression(path2.node.left) && t.isIdentifier(path2.node.left.object, { name: "exports" }) && t.isIdentifier(path2.node.left.property)) {
-        exportedMethods.add(path2.node.left.property.name);
-      }
-    },
-    // ES Module exports
     ExportNamedDeclaration(path2) {
       if (path2.node.declaration) {
-        if (t.isVariableDeclaration(path2.node.declaration)) {
-          path2.node.declaration.declarations.forEach((decl) => {
-            if (t.isIdentifier(decl.id)) {
-              exportedMethods.add(decl.id.name);
+        const declaration = path2.node.declaration;
+        if (t.isVariableDeclaration(declaration)) {
+          declaration.declarations.forEach((declarator) => {
+            if (t.isObjectExpression(declarator.init)) {
+              exportsObject[declarator.id.name] = {};
+              declarator.init.properties.forEach((property) => {
+                exportsObject[declarator.id.name][property.key.name] = property.value.value;
+              });
+            } else {
+              exportsObject[declarator.id.name] = declarator.init.value;
             }
           });
-        } else {
-          if (path2.node.declaration?.id) {
-            exportedMethods.add(path2.node.declaration.id.name);
+        } else if (t.isClassDeclaration(declaration)) {
+          exportsObject[declaration.id.name] = {};
+          if (t.isClassBody(declaration.body)) {
+            declaration.body.body.forEach((member) => {
+              if (t.isClassMethod(member) || t.isClassProperty(member)) {
+                exportsObject[declaration.id.name][member.key.name] = member.type;
+              }
+            });
           }
+        } else if (t.isFunctionDeclaration(declaration)) {
+          exportsObject[declaration.id.name] = declaration.type;
         }
-      } else if (path2.node.specifiers) {
-        path2.node.specifiers.forEach((spec) => {
-          if (t.isIdentifier(spec.exported)) {
-            exportedMethods.add(spec.exported.name);
-          }
-        });
       }
     },
     ExportDefaultDeclaration(path2) {
-      exportedMethods.add("default");
-      if (t.isObjectExpression(path2.node.declaration)) {
-        path2.node.declaration.properties.forEach((prop) => {
-          if (t.isObjectProperty(prop) && t.isIdentifier(prop.key)) {
-            exportedMethods.add(`default.${prop.key.name}`);
+      exportsObject["export default"] = {};
+      const declaration = path2.node.declaration;
+      if (t.isIdentifier(declaration)) {
+        const binding = path2.scope.getBinding(declaration.name);
+        const bindingNode = binding.path.node;
+        if (binding) {
+          if (t.isClassDeclaration(bindingNode)) {
+            bindingNode.body.body.forEach((member) => {
+              if (t.isClassMethod(member) || t.isClassProperty(member)) {
+                exportsObject["export default"][member.key.name] = member.type;
+              }
+            });
+          } else if (t.isObjectExpression(bindingNode)) {
+            bindingNode.properties.forEach((property) => {
+              exportsObject["export default"][property.key.name] = property.value.type;
+            });
+          } else {
+            exportsObject["export default"] = bindingNode.type;
           }
+        }
+      } else if (t.isObjectExpression(declaration)) {
+        declaration.properties.forEach((property) => {
+          exportsObject["export default"][property.key.name] = property.value.type;
         });
       }
     }
   });
-  exportedAllList.set(fullPath, [...exportedMethods]);
+  return exportsObject;
+}
+
+// src/getCitation.js
+var import_traverse2 = __toESM(require("@babel/traverse"), 1);
+var t2 = __toESM(require("@babel/types"), 1);
+function getCitation(filePath, ast, targetVar) {
+  function isReference(path2) {
+    return !(t2.isVariableDeclarator(path2.parent) || t2.isFunctionDeclaration(path2.parent));
+  }
+  function getContext(path2) {
+    const parent = path2.parentPath;
+    if (parent.isMemberExpression()) {
+      return `${path2.node.name}${parent.node.property.name ? "." + parent.node.property.name : ""}`;
+    }
+    return path2.node.name;
+  }
+  const references = [];
+  try {
+    import_traverse2.default.default(ast, {
+      Identifier(path2) {
+        if (path2.node.name === targetVar && isReference(path2)) {
+          references.push({
+            filePath,
+            line: path2.node.loc?.start.line,
+            column: path2.node.loc?.start.column,
+            context: getContext(path2)
+          });
+        }
+      }
+    });
+  } catch (error) {
+    console.error("\u89E3\u6790\u4EE3\u7801\u51FA\u9519:", error);
+  }
+  return references;
+}
+
+// src/index.js
+var exportedAllList = {};
+var errorList = /* @__PURE__ */ new Set();
+var aliases = null;
+function getExportedMethods(code, fullPath) {
+  exportedAllList[fullPath] = getExport(code);
 }
 function resolveImportPath(importPath, sourceFile) {
   let basePath = "";
@@ -120,31 +170,32 @@ function resolveImportPath(importPath, sourceFile) {
   }
   return basePath;
 }
-function checkImport(path2, fullPath, filePath) {
-  path2.specifiers.forEach((spec) => {
-    if (t.isImportDefaultSpecifier(spec)) {
-      if (!exportedAllList.has(fullPath) || !exportedAllList.get(fullPath).includes("default")) {
-        if (spec.loc) {
-          const { line, column } = spec.loc.start;
-          errorList.add(
-            `\u{1F534} ERROR: \u672A\u627E\u5230\u9ED8\u8BA4\u5BFC\u51FA: "${spec.local.name}" at ${filePath}:${line}:${column}`
-          );
-        } else {
-          errorList.add(`\u{1F534} ERROR: \u672A\u627E\u5230\u9ED8\u8BA4\u5BFC\u51FA: "${spec.local.name}"`);
-        }
+function checkExists(resolvedPath, citations, defaultBol = false) {
+  const obj = exportedAllList[resolvedPath];
+  if (defaultBol && !("export default" in obj)) {
+    errorList.add(
+      `\u{1F534} ERROR: \u672A\u627E\u5230\u5BF9\u5E94\u7684\u9ED8\u8BA4\u5BFC\u51FA: "${item.context}" at ${item.filePath}:${item.line}:${item.column}`
+    );
+  }
+  citations.forEach((item2) => {
+    if (defaultBol) {
+      const value = item2.context.split(".")[1];
+      if (value && value in obj["export default"] === false) {
+        errorList.add(
+          `\u{1F534} ERROR: \u672A\u627E\u5230\u5BF9\u5E94\u53EF\u4F7F\u7528\u7684\u5C5E\u6027: "${item2.context}" at ${item2.filePath}:${item2.line}:${item2.column}`
+        );
       }
-    }
-    if (t.isImportSpecifier(spec)) {
-      const importedName = t.isIdentifier(spec.imported) ? spec.imported.name : spec.imported.value;
-      if (!exportedAllList.has(fullPath) || !exportedAllList.get(fullPath).includes(importedName)) {
-        if (spec.loc) {
-          const { line, column } = spec.loc.start;
-          errorList.add(
-            `\u{1F534} ERROR: \u672A\u627E\u5230\u5BF9\u5E94\u7684\u5BFC\u51FA: "${importedName}" at ${filePath}:${line}:${column}`
-          );
-        } else {
-          errorList.add(`\u{1F534} ERROR: \u672A\u627E\u5230\u5BF9\u5E94\u7684\u5BFC\u51FA: "${importedName}"`);
-        }
+    } else {
+      const key = item2.context.split(".")[0];
+      const value = item2.context.split(".")[1];
+      if (key in obj === false) {
+        errorList.add(
+          `\u{1F534} ERROR: \u672A\u627E\u5230\u5BF9\u5E94\u7684\u5BFC\u51FA: "${item2.context}" at ${item2.filePath}:${item2.line}:${item2.column}`
+        );
+      } else if (value && value in obj[key] === false) {
+        errorList.add(
+          `\u{1F534} ERROR: \u672A\u627E\u5230\u5BF9\u5E94\u53EF\u4F7F\u7528\u7684\u5C5E\u6027: "${item2.context}" at ${item2.filePath}:${item2.line}:${item2.column}`
+        );
       }
     }
   });
@@ -158,7 +209,7 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
       if (!descriptor.script && !descriptor.scriptSetup)
         return false;
       const scriptContent = descriptor.script?.content || descriptor.scriptSetup?.content || "";
-      ast = (0, import_parser.parse)(scriptContent, {
+      ast = (0, import_parser2.parse)(scriptContent, {
         sourceType: "module",
         plugins: ["jsx", "typescript"],
         allowUndeclaredExports: true
@@ -169,7 +220,7 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
     }
   } else {
     try {
-      ast = (0, import_parser.parse)(code, {
+      ast = (0, import_parser2.parse)(code, {
         sourceType: "module",
         plugins: ["jsx", "typescript"],
         allowUndeclaredExports: true
@@ -179,7 +230,7 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
       return false;
     }
   }
-  import_traverse.default.default(ast, {
+  import_traverse3.default.default(ast, {
     // 静态导入: import ... from 'xxx'
     ImportDeclaration(path2) {
       const importPath = path2.node.source.value;
@@ -215,7 +266,16 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
         } else {
           const code2 = import_fs.default.readFileSync(resolvedPath, "utf-8");
           getExportedMethods(code2, resolvedPath);
-          checkImport(path2.node, resolvedPath, filePath);
+          path2.node.specifiers.forEach((spec) => {
+            if (t3.isImportDefaultSpecifier(spec)) {
+              const citations = getCitation(filePath, ast, spec.local.name);
+              checkExists(resolvedPath, citations, true);
+            }
+            if (t3.isImportSpecifier(spec)) {
+              const citations = getCitation(filePath, ast, spec.imported.name);
+              checkExists(resolvedPath, citations);
+            }
+          });
         }
       }
     }
@@ -234,8 +294,8 @@ function importValidationForVite(options) {
       }
       const ext = import_path.default.extname(id);
       if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue"].includes(ext)) {
-        const newSpecify = options.specify.map((item) => {
-          return import_path.default.join(process.cwd(), item);
+        const newSpecify = options.specify.map((item2) => {
+          return import_path.default.join(process.cwd(), item2);
         });
         const API_PATH_PATTERN = new RegExp(`^(${newSpecify.join("|")})/`);
         hasApiImport(id, code, API_PATH_PATTERN);
@@ -273,9 +333,11 @@ var importValidationForWebpack = class {
               return;
             }
             const ext = import_path.default.extname(module2.resource);
-            if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue"].includes(ext)) {
-              const newSpecify = this.options.specify.map((item) => {
-                return import_path.default.join(process.cwd(), item);
+            if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue"].includes(
+              ext
+            )) {
+              const newSpecify = this.options.specify.map((item2) => {
+                return import_path.default.join(process.cwd(), item2);
               });
               const API_PATH_PATTERN = new RegExp(
                 `^(${newSpecify.join("|")})/`
@@ -286,8 +348,8 @@ var importValidationForWebpack = class {
               const code = source.source().toString();
               hasApiImport(module2.resource, code, API_PATH_PATTERN);
               if (errorList.size > 0) {
+                console.error("\n \u53D1\u73B0\u5BFC\u5165\u9A8C\u8BC1\u9519\u8BEF \n");
                 Array.from(errorList).forEach((error) => {
-                  console.error("\n \u53D1\u73B0\u5BFC\u5165\u9A8C\u8BC1\u9519\u8BEF \n");
                   console.error(error);
                 });
                 console.error("\n \u8BF7\u4FEE\u590D\u4EE5\u4E0A\u9519\u8BEF\u540E\u91CD\u8BD5 \n");

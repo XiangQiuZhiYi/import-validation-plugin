@@ -5,90 +5,16 @@ import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
 import * as t from "@babel/types";
 import { parse as parseVue } from "@vue/compiler-sfc";
+import getExport from "./getExport";
+import getCitation from "./getCitation";
 
-const exportedAllList = new Map();
+const exportedAllList = {};
 const errorList = new Set();
 let aliases = null;
 
 // 获取文件中导出的方法名
 function getExportedMethods(code, fullPath) {
-  if (exportedAllList.has(fullPath)) {
-    return;
-  }
-  const ast = parse(code, {
-    sourceType: "module",
-    plugins: ["jsx", "typescript"],
-    allowUndeclaredExports: true,
-  });
-  const exportedMethods = new Set();
-  traverse.default(ast, {
-    noScope: true,
-    // CommonJS exports
-    AssignmentExpression(path) {
-      // module.exports = { ... }
-      if (
-        t.isMemberExpression(path.node.left) &&
-        t.isIdentifier(path.node.left.object, { name: "module" }) &&
-        t.isIdentifier(path.node.left.property, { name: "exports" }) &&
-        t.isObjectExpression(path.node.right)
-      ) {
-        path.node.right.properties.forEach((prop) => {
-          if (t.isObjectProperty(prop) && t.isIdentifier(prop.key)) {
-            exportedMethods.add(prop.key.name);
-          }
-        });
-      }
-      // exports.func = ...
-      else if (
-        t.isMemberExpression(path.node.left) &&
-        t.isIdentifier(path.node.left.object, { name: "exports" }) &&
-        t.isIdentifier(path.node.left.property)
-      ) {
-        exportedMethods.add(path.node.left.property.name);
-      }
-    },
-
-    // ES Module exports
-    ExportNamedDeclaration(path) {
-      // export function/const
-      if (path.node.declaration) {
-        if (t.isVariableDeclaration(path.node.declaration)) {
-          path.node.declaration.declarations.forEach((decl) => {
-            if (t.isIdentifier(decl.id)) {
-              exportedMethods.add(decl.id.name);
-            }
-          });
-        } else {
-          if (path.node.declaration?.id) {
-            exportedMethods.add(path.node.declaration.id.name);
-          }
-        }
-      }
-      // export { func }
-      else if (path.node.specifiers) {
-        path.node.specifiers.forEach((spec) => {
-          if (t.isIdentifier(spec.exported)) {
-            exportedMethods.add(spec.exported.name);
-          }
-        });
-      }
-    },
-
-    ExportDefaultDeclaration(path) {
-      // 将默认导出标记为 'default'
-      exportedMethods.add("default");
-
-      // 如果默认导出是对象，收集其方法
-      if (t.isObjectExpression(path.node.declaration)) {
-        path.node.declaration.properties.forEach((prop) => {
-          if (t.isObjectProperty(prop) && t.isIdentifier(prop.key)) {
-            exportedMethods.add(`default.${prop.key.name}`);
-          }
-        });
-      }
-    },
-  });
-  exportedAllList.set(fullPath, [...exportedMethods]);
+  exportedAllList[fullPath] = getExport(code);
 }
 
 /**
@@ -158,7 +84,51 @@ function checkImport(path, fullPath, filePath) {
   });
 }
 
-// 2. 检查文件是否包含 api 引用
+/**
+ * 检查是否存在
+ * @param resolvedPath 被引用的文件路径 
+ * @param citations 引用数据集
+ * @param defaultBol 是否为默认导入
+ */
+function checkExists(resolvedPath, citations, defaultBol = false){
+  const obj = exportedAllList[resolvedPath]
+  if(defaultBol && !('export default' in obj)){
+    errorList.add(
+      `🔴 ERROR: 未找到对应的默认导出: "${item.context}" at ${item.filePath}:${item.line}:${item.column}`
+    );
+  }
+
+  citations.forEach((item) => {
+    if (defaultBol) {
+      const value = item.context.split(".")[1]
+      if (value && value in obj["export default"] === false) {
+        errorList.add(
+          `🔴 ERROR: 未找到对应可使用的属性: "${item.context}" at ${item.filePath}:${item.line}:${item.column}`
+        );
+      }
+    } else {
+      const key = item.context.split(".")[0]
+      const value = item.context.split(".")[1]
+      if(key in obj === false){
+         errorList.add(
+          `🔴 ERROR: 未找到对应的导出: "${item.context}" at ${item.filePath}:${item.line}:${item.column}`
+        );
+      }else if(value && value in obj[key] === false){
+        errorList.add(
+          `🔴 ERROR: 未找到对应可使用的属性: "${item.context}" at ${item.filePath}:${item.line}:${item.column}`
+        );
+      }
+    }
+  })
+} 
+
+/**
+ * 检查文件是否包含 api 引用
+ * @param filePath 当前文件路径
+ * @param code 当前文件code
+ * @param API_PATH_PATTERN 要匹配的地址
+ * @returns 
+ */
 function hasApiImport(filePath, code, API_PATH_PATTERN) {
   const ext = path.extname(filePath);
   let ast;
@@ -199,7 +169,7 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
     // 静态导入: import ... from 'xxx'
     ImportDeclaration(path) {
       const importPath = path.node.source.value;
-      let resolvedPath = ''
+      let resolvedPath = "";
       const basePath = resolveImportPath(importPath, filePath);
       if (API_PATH_PATTERN.test(basePath)) {
         const extensions = [
@@ -212,18 +182,17 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
         ];
 
         if (fs.existsSync(basePath)) {
-          resolvedPath = basePath
+          resolvedPath = basePath;
         }
         // 4. 尝试补全扩展名
         for (const ext of extensions) {
           const fullPath = basePath + ext;
           if (fs.existsSync(fullPath)) {
-          resolvedPath = fullPath
-
+            resolvedPath = fullPath;
           }
         }
 
-        if (resolvedPath === '') {
+        if (resolvedPath === "") {
           if (path.node.loc) {
             const { line, column } = path.node.loc.start;
             errorList.add(
@@ -235,8 +204,16 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
         } else {
           const code = fs.readFileSync(resolvedPath, "utf-8");
           getExportedMethods(code, resolvedPath);
-
-          checkImport(path.node, resolvedPath, filePath);
+          path.node.specifiers.forEach((spec) => {
+            if (t.isImportDefaultSpecifier(spec)) {
+              const citations = getCitation(filePath, ast, spec.local.name)
+              checkExists(resolvedPath, citations, true)
+            }
+            if (t.isImportSpecifier(spec)) {
+              const citations = getCitation(filePath, ast, spec.imported.name)
+              checkExists(resolvedPath, citations)
+            }
+          })
         }
       }
     },
@@ -253,13 +230,14 @@ export function importValidationForVite(options) {
     },
 
     async transform(code, id) {
-
       // 跳过排除的文件
       if (options.exclude && options.exclude.test(id)) {
         return null;
       }
       const ext = path.extname(id);
-      if ([".js", ".jsx", ".ts",".tsx", ".mjs", ".cjs", ".vue"].includes(ext)) {
+      if (
+        [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue"].includes(ext)
+      ) {
         const newSpecify = options.specify.map((item) => {
           return path.join(process.cwd(), item);
         });
@@ -305,7 +283,11 @@ export class importValidationForWebpack {
               return;
             }
             const ext = path.extname(module.resource);
-            if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue"].includes(ext)) {
+            if (
+              [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue"].includes(
+                ext
+              )
+            ) {
               const newSpecify = this.options.specify.map((item) => {
                 return path.join(process.cwd(), item);
               });
@@ -317,10 +299,9 @@ export class importValidationForWebpack {
               if (!source) return;
               const code = source.source().toString();
               hasApiImport(module.resource, code, API_PATH_PATTERN);
-
               if (errorList.size > 0) {
+                console.error("\n 发现导入验证错误 \n");
                 Array.from(errorList).forEach((error) => {
-                  console.error("\n 发现导入验证错误 \n");
                   console.error(error);
                 });
                 console.error("\n 请修复以上错误后重试 \n");

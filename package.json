@@ -1,6 +1,6 @@
 {
   "name": "import-validation-plugin",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "A plugin for validating imports in Vite and Webpack projects",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -28,17 +28,18 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
+    "@babel/generator": "^7.28.0",
     "@babel/parser": "^7.27.5",
+    "@babel/preset-typescript": "^7.27.1",
     "@babel/traverse": "^7.27.4",
     "@babel/types": "^7.27.6",
     "@vue/compiler-sfc": "^3.5.16",
-    "chalk": "^5.4.1",
-    "@babel/preset-typescript": "^7.27.1"
+    "chalk": "^5.4.1"
   },
   "peerDependencies": {
+    "@babel/core": "^7.27.5",
     "vite": "^6.3.5",
-    "webpack": "^5.89.0",
-    "@babel/core": "^7.27.5"
+    "webpack": "^5.89.0"
   },
   "scripts": {
     "build": "node build.js"
