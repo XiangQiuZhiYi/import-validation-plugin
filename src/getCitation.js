@@ -1,7 +1,7 @@
 import traverse from "@babel/traverse";
 import * as t from "@babel/types";
 
-export default function getCitation(filePath,ast, targetVar) {
+export default function getCitation(filePath, ast, targetVar) {
   // 判断是否是真正的引用而非声明
   function isReference(path) {
     return !(
@@ -28,12 +28,15 @@ export default function getCitation(filePath,ast, targetVar) {
     traverse.default(ast, {
       Identifier(path) {
         if (path.node.name === targetVar && isReference(path)) {
-          references.push({
-            filePath,
-            line: path.node.loc?.start.line,
-            column: path.node.loc?.start.column,
-            context: getContext(path),
-          });
+          const parentNode = path.parentPath.node;
+          if (!parentNode.computed) {
+            references.push({
+              filePath,
+              line: path.node.loc?.start.line,
+              column: path.node.loc?.start.column,
+              context: getContext(path),
+            });
+          }
         }
       },
     });

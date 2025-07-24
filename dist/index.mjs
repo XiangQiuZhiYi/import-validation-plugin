@@ -157,8 +157,8 @@ function getExport(originalCode) {
         const nameList = path2.node.specifiers.map((specifier) => {
           return specifier.exported.name;
         });
-        const parent = path2.scope.getBlockParent();
-        parent?.path?.node?.body.forEach((node) => {
+        const parent = path2.parentPath.node;
+        parent?.body.forEach((node) => {
           if (node.id?.name) {
             if (nameList.includes(node?.id?.name)) {
               handleExport(node);
@@ -179,8 +179,8 @@ function getExport(originalCode) {
       exportsObject["export default"] = {};
       const declaration = path2.node.declaration;
       if (t.isIdentifier(declaration)) {
-        const parent = path2.scope.getBlockParent();
-        parent?.path?.node?.body.forEach((node) => {
+        const parent = path2.parentPath.node;
+        parent?.body.forEach((node) => {
           if (node.id?.name) {
             if (declaration.name === node?.id?.name) {
               handleExportDefault(node);
@@ -224,12 +224,15 @@ function getCitation(filePath, ast, targetVar) {
     traverse2.default(ast, {
       Identifier(path2) {
         if (path2.node.name === targetVar && isReference(path2)) {
-          references.push({
-            filePath,
-            line: path2.node.loc?.start.line,
-            column: path2.node.loc?.start.column,
-            context: getContext(path2)
-          });
+          const parentNode = path2.parentPath.node;
+          if (!parentNode.computed) {
+            references.push({
+              filePath,
+              line: path2.node.loc?.start.line,
+              column: path2.node.loc?.start.column,
+              context: getContext(path2)
+            });
+          }
         }
       }
     });

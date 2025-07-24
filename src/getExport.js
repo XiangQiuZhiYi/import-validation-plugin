@@ -166,8 +166,8 @@ export default function getExport(originalCode) {
         const nameList = path.node.specifiers.map((specifier) => {
           return specifier.exported.name;
         });
-        const parent = path.scope.getBlockParent();
-        parent?.path?.node?.body.forEach((node) => {
+        const parent = path.parentPath.node;
+        parent?.body.forEach((node) => {
           if (node.id?.name) {
             if (nameList.includes(node?.id?.name)) {
               handleExport(node);
@@ -190,8 +190,8 @@ export default function getExport(originalCode) {
       const declaration = path.node.declaration;
 
       if (t.isIdentifier(declaration)) {
-        const parent = path.scope.getBlockParent();
-        parent?.path?.node?.body.forEach((node) => {
+        const parent = path.parentPath.node
+        parent?.body.forEach((node) => {
           if (node.id?.name) {
             if (declaration.name === node?.id?.name) {
               handleExportDefault(node);
