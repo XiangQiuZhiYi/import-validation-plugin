@@ -76,6 +76,22 @@ function getExport(originalCode) {
           }
         } else if (t.isFunctionDeclaration(declaration)) {
           exportsObject[declaration.id.name] = declaration.type;
+        } else if (t.isTSInterfaceDeclaration(declaration)) {
+          exportsObject[declaration.id.name] = {};
+          declaration.body.body.forEach((member) => {
+            if (t.isTSPropertySignature(member)) {
+              exportsObject[declaration.id.name][member.key.name] = member.typeAnnotation.typeAnnotation.type;
+            }
+          });
+        } else if (t.isTSTypeAliasDeclaration(declaration)) {
+          if (declaration.typeAnnotation.members) {
+            exportsObject[declaration.id.name] = {};
+            declaration.typeAnnotation.members.forEach((member) => {
+              exportsObject[declaration.id.name][member.key.name] = member.typeAnnotation.type;
+            });
+          } else {
+            exportsObject[declaration.id.name] = declaration.typeAnnotation.type;
+          }
         }
       }
     },
@@ -84,7 +100,7 @@ function getExport(originalCode) {
       const declaration = path2.node.declaration;
       if (t.isIdentifier(declaration)) {
         const binding = path2.scope.getBinding(declaration.name);
-        const bindingNode = binding.path.node;
+        const bindingNode = binding?.path?.node;
         if (binding) {
           if (t.isClassDeclaration(bindingNode)) {
             bindingNode.body.body.forEach((member) => {
@@ -99,6 +115,27 @@ function getExport(originalCode) {
           } else {
             exportsObject["export default"] = bindingNode.type;
           }
+        } else {
+          const parent = path2.scope.getBlockParent();
+          parent?.path?.node?.body.forEach((node) => {
+            if (node?.id?.name === declaration.name) {
+              if (t.isTSInterfaceDeclaration(node)) {
+                node.body.body.forEach((member) => {
+                  if (t.isTSPropertySignature(member)) {
+                    exportsObject["export default"][member.key.name] = member.typeAnnotation.type;
+                  }
+                });
+              } else if (t.isTSTypeAliasDeclaration(node)) {
+                if (node.typeAnnotation.members) {
+                  node.typeAnnotation.members.forEach((member) => {
+                    exportsObject["export default"][member.key.name] = member.typeAnnotation.type;
+                  });
+                } else {
+                  exportsObject["export default"] = node.typeAnnotation.type;
+                }
+              }
+            }
+          });
         }
       } else if (t.isObjectExpression(declaration)) {
         declaration.properties.forEach((property) => {
@@ -149,7 +186,9 @@ var exportedAllList = {};
 var errorList = /* @__PURE__ */ new Set();
 var aliases = null;
 function getExportedMethods(code, fullPath) {
-  exportedAllList[fullPath] = getExport(code);
+  if (fullPath in exportedAllList === false) {
+    exportedAllList[fullPath] = getExport(code);
+  }
 }
 function resolveImportPath(importPath, sourceFile) {
   let basePath = "";

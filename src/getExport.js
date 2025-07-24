@@ -17,7 +17,6 @@ export default function getExport(originalCode) {
     ExportNamedDeclaration(path) {
       if (path.node.declaration) {
         const declaration = path.node.declaration;
-
         if (t.isVariableDeclaration(declaration)) {
           declaration.declarations.forEach((declarator) => {
             if (t.isObjectExpression(declarator.init)) {
@@ -42,6 +41,25 @@ export default function getExport(originalCode) {
           }
         } else if (t.isFunctionDeclaration(declaration)) {
           exportsObject[declaration.id.name] = declaration.type;
+        } else if (t.isTSInterfaceDeclaration(declaration)) {
+          exportsObject[declaration.id.name] = {};
+          declaration.body.body.forEach((member) => {
+            if (t.isTSPropertySignature(member)) {
+              exportsObject[declaration.id.name][member.key.name] =
+                member.typeAnnotation.typeAnnotation.type;
+            }
+          });
+        } else if (t.isTSTypeAliasDeclaration(declaration)) {
+          if (declaration.typeAnnotation.members) {
+            exportsObject[declaration.id.name] = {};
+            declaration.typeAnnotation.members.forEach((member) => {
+              exportsObject[declaration.id.name][member.key.name] =
+                member.typeAnnotation.type;
+            });
+          } else {
+            exportsObject[declaration.id.name] =
+              declaration.typeAnnotation.type;
+          }
         }
       }
     },
@@ -51,10 +69,8 @@ export default function getExport(originalCode) {
       const declaration = path.node.declaration;
 
       if (t.isIdentifier(declaration)) {
-        // 如果是标识符引用 (export default MyClass)
-        // 需要查找对应的类声明
         const binding = path.scope.getBinding(declaration.name);
-        const bindingNode = binding.path.node;
+        const bindingNode = binding?.path?.node;
         if (binding) {
           if (t.isClassDeclaration(bindingNode)) {
             bindingNode.body.body.forEach((member) => {
@@ -70,6 +86,29 @@ export default function getExport(originalCode) {
           } else {
             exportsObject["export default"] = bindingNode.type;
           }
+        } else {
+          const parent = path.scope.getBlockParent();
+          parent?.path?.node?.body.forEach((node) => {
+            if (node?.id?.name === declaration.name) {
+              if (t.isTSInterfaceDeclaration(node)) {
+                node.body.body.forEach((member) => {
+                  if (t.isTSPropertySignature(member)) {
+                    exportsObject["export default"][member.key.name] =
+                      member.typeAnnotation.type;
+                  }
+                });
+              } else if (t.isTSTypeAliasDeclaration(node)) {
+                if (node.typeAnnotation.members) {
+                  node.typeAnnotation.members.forEach((member) => {
+                    exportsObject["export default"][member.key.name] =
+                      member.typeAnnotation.type;
+                  });
+                } else {
+                  exportsObject["export default"] = node.typeAnnotation.type;
+                }
+              }
+            }
+          });
         }
       } else if (t.isObjectExpression(declaration)) {
         declaration.properties.forEach((property) => {
@@ -79,6 +118,5 @@ export default function getExport(originalCode) {
       }
     },
   });
-
   return exportsObject;
 }

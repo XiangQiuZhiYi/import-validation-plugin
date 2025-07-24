@@ -14,7 +14,9 @@ let aliases = null;
 
 // 获取文件中导出的方法名
 function getExportedMethods(code, fullPath) {
-  exportedAllList[fullPath] = getExport(code);
+  if(fullPath in exportedAllList === false){
+    exportedAllList[fullPath] = getExport(code);
+  }
 }
 
 /**
@@ -45,45 +47,6 @@ function resolveImportPath(importPath, sourceFile) {
   return basePath;
 }
 
-// 检查引用文件的语法树是否包含在对应的文件中
-function checkImport(path, fullPath, filePath) {
-  path.specifiers.forEach((spec) => {
-    if (t.isImportDefaultSpecifier(spec)) {
-      if (
-        !exportedAllList.has(fullPath) ||
-        !exportedAllList.get(fullPath).includes("default")
-      ) {
-        if (spec.loc) {
-          const { line, column } = spec.loc.start;
-          errorList.add(
-            `🔴 ERROR: 未找到默认导出: "${spec.local.name}" at ${filePath}:${line}:${column}`
-          );
-        } else {
-          errorList.add(`🔴 ERROR: 未找到默认导出: "${spec.local.name}"`);
-        }
-      }
-    }
-    if (t.isImportSpecifier(spec)) {
-      const importedName = t.isIdentifier(spec.imported)
-        ? spec.imported.name
-        : spec.imported.value;
-      if (
-        !exportedAllList.has(fullPath) ||
-        !exportedAllList.get(fullPath).includes(importedName)
-      ) {
-        if (spec.loc) {
-          const { line, column } = spec.loc.start;
-          errorList.add(
-            `🔴 ERROR: 未找到对应的导出: "${importedName}" at ${filePath}:${line}:${column}`
-          );
-        } else {
-          errorList.add(`🔴 ERROR: 未找到对应的导出: "${importedName}"`);
-        }
-      }
-    }
-  });
-}
-
 /**
  * 检查是否存在
  * @param resolvedPath 被引用的文件路径 
@@ -92,6 +55,7 @@ function checkImport(path, fullPath, filePath) {
  */
 function checkExists(resolvedPath, citations, defaultBol = false){
   const obj = exportedAllList[resolvedPath]
+  
   if(defaultBol && !('export default' in obj)){
     errorList.add(
       `🔴 ERROR: 未找到对应的默认导出: "${item.context}" at ${item.filePath}:${item.line}:${item.column}`
