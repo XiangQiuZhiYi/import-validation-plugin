@@ -8,6 +8,8 @@
 - 抛出验证错误，强制停止打包
 - 可配置的验证规则
 - 支持 vite 以及 webpack
+- 支持校验深度：导入方法的属性是否存在
+- 分别支持js代码和ts类型check
 
 ![import check](image.png)
 
