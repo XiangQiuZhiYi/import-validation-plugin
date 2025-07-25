@@ -14,7 +14,7 @@ let aliases = null;
 
 // 获取文件中导出的方法名
 function getExportedMethods(code, fullPath) {
-  if(fullPath in exportedAllList === false){
+  if (fullPath in exportedAllList === false) {
     exportedAllList[fullPath] = getExport(code);
   }
 }
@@ -49,14 +49,14 @@ function resolveImportPath(importPath, sourceFile) {
 
 /**
  * 检查是否存在
- * @param resolvedPath 被引用的文件路径 
+ * @param resolvedPath 被引用的文件路径
  * @param citations 引用数据集
  * @param defaultBol 是否为默认导入
  */
-function checkExists(resolvedPath, citations, defaultBol = false){
-  const obj = exportedAllList[resolvedPath]
-  
-  if(defaultBol && !('export default' in obj)){
+function checkExists(resolvedPath, citations, defaultBol = false) {
+  const obj = exportedAllList[resolvedPath];
+
+  if (defaultBol && !("export default" in obj)) {
     errorList.add(
       `🔴 ERROR: 未找到对应的默认导出: "${item.context}" at ${item.filePath}:${item.line}:${item.column}`
     );
@@ -64,34 +64,34 @@ function checkExists(resolvedPath, citations, defaultBol = false){
 
   citations.forEach((item) => {
     if (defaultBol) {
-      const value = item.context.split(".")[1]
+      const value = item.context.split(".")[1];
       if (value && value in obj["export default"] === false) {
         errorList.add(
           `🔴 ERROR: 未找到对应可使用的属性: "${item.context}" at ${item.filePath}:${item.line}:${item.column}`
         );
       }
     } else {
-      const key = item.context.split(".")[0]
-      const value = item.context.split(".")[1]
-      if(key in obj === false){
-         errorList.add(
+      const key = item.context.split(".")[0];
+      const value = item.context.split(".")[1];
+      if (key in obj === false) {
+        errorList.add(
           `🔴 ERROR: 未找到对应的导出: "${item.context}" at ${item.filePath}:${item.line}:${item.column}`
         );
-      }else if(value && value in obj[key] === false){
+      } else if (value && value in obj[key] === false) {
         errorList.add(
           `🔴 ERROR: 未找到对应可使用的属性: "${item.context}" at ${item.filePath}:${item.line}:${item.column}`
         );
       }
     }
-  })
-} 
+  });
+}
 
 /**
  * 检查文件是否包含 api 引用
  * @param filePath 当前文件路径
  * @param code 当前文件code
  * @param API_PATH_PATTERN 要匹配的地址
- * @returns 
+ * @returns
  */
 function hasApiImport(filePath, code, API_PATH_PATTERN) {
   const ext = path.extname(filePath);
@@ -127,7 +127,6 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
       return false;
     }
   }
-
   // 3. 遍历 AST 查找 import 语句
   traverse.default(ast, {
     // 静态导入: import ... from 'xxx'
@@ -170,14 +169,14 @@ function hasApiImport(filePath, code, API_PATH_PATTERN) {
           getExportedMethods(code, resolvedPath);
           path.node.specifiers.forEach((spec) => {
             if (t.isImportDefaultSpecifier(spec)) {
-              const citations = getCitation(filePath, ast, spec.local.name)
-              checkExists(resolvedPath, citations, true)
+              const citations = getCitation(filePath, ast, spec.local.name);
+              checkExists(resolvedPath, citations, true);
             }
             if (t.isImportSpecifier(spec)) {
-              const citations = getCitation(filePath, ast, spec.imported.name)
-              checkExists(resolvedPath, citations)
+              const citations = getCitation(filePath, ast, spec.imported.name);
+              checkExists(resolvedPath, citations);
             }
-          })
+          });
         }
       }
     },
@@ -276,5 +275,58 @@ export class importValidationForWebpack {
         );
       }
     );
+  }
+}
+
+export class importValidationForWebpack2 {
+  constructor(options = {}) {
+    this.options = {
+      specify: ["api", "enum"],
+      skipDefault: false,
+      exclude: /node_modules/,
+      ...options,
+    };
+  }
+
+  apply(compiler) {
+    const webpackConfig = compiler.options;
+    aliases = webpackConfig.resolve.alias || {};
+
+    // Webpack 2.x 使用 plugin() 而不是 hooks
+    compiler.plugin("compilation", (compilation) => {
+      compilation.plugin("normal-module-loader", (loaderContext, module) => {
+        if (
+          (this.options.exclude &&
+            this.options.exclude.test(module.resource)) ||
+          !module.resource
+        ) {
+          return;
+        }
+
+        const ext = path.extname(module.resource);
+        if (
+          [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue"].includes(ext)
+        ) {
+          const newSpecify = this.options.specify.map((item) => {
+            return path.join(process.cwd(), item);
+          });
+          const API_PATH_PATTERN = new RegExp(`^(${newSpecify.join("|")})/`);
+
+          loaderContext.fs.readFile(module.resource, (err, data) => {
+            if (err) return console.error(`读取失败: ${module.resource}`, err);
+
+            const code = data?.toString();
+            if (code) {
+              hasApiImport(module.resource, code, API_PATH_PATTERN);
+              if (errorList.size > 0) {
+                console.error("\n发现导入验证错误:");
+                errorList.forEach((error) => console.error(error));
+                process.exit(1);
+              }
+            }
+          });
+        }
+      });
+    });
   }
 }
